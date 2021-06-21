@@ -92,6 +92,8 @@ class HomePage extends State<WebViewClass> {
                     _controller.complete(webViewController);
                   },
                   navigationDelegate: (NavigationRequest request) {
+                    if (request.url.contains("occinfotech.in"))
+                      return NavigationDecision.prevent;
                     if (!request.url.startsWith("http") || request.url.endsWith(".pdf")) {
                       _launchURL(request.url);
                       return NavigationDecision.prevent;
