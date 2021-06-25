@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -8,6 +7,9 @@ import 'package:webview_flutter/platform_interface.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+
 
 WebViewController controllerGlobal;
 bool isLoading;
@@ -25,9 +27,12 @@ class WebViewClass extends StatefulWidget {
 }
 
 class HomePage extends State<WebViewClass> {
-  FirebaseMessaging messaging;
   num position = 1 ;
-
+  SharedPreferences prefs;
+  String sp_fcm_token;
+  final Completer<WebViewController> _controller = Completer<WebViewController>();
+  FirebaseMessaging _firebaseMessaging;
+  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   final key = UniqueKey();
 
   doneLoading() {
@@ -70,30 +75,29 @@ class HomePage extends State<WebViewClass> {
     }
   }
 
-
-  final Completer<WebViewController> _controller = Completer<WebViewController>();
-  FirebaseMessaging _firebaseMessaging;
-  FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   @override
-
   void initState() {
     super.initState();
 
     var initializationSettingsAndroid = new AndroidInitializationSettings('@mipmap/ic_launcher');
     var initializationSettingsIOS = new IOSInitializationSettings();
-    var initializationSettings = new InitializationSettings(
-        android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
-    flutterLocalNotificationsPlugin.initialize(initializationSettings,
-        onSelectNotification: onSelectNotification);
-    newNotificationStart();
+    var initializationSettings = new InitializationSettings(android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
+    flutterLocalNotificationsPlugin.initialize(initializationSettings, onSelectNotification: onSelectNotification);
+    startNotification();
     if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
   }
 
-  void newNotificationStart() async {
+  void startNotification() async {
+
     await Firebase.initializeApp();
     _firebaseMessaging = FirebaseMessaging.instance;
-    _firebaseMessaging.getToken().then((value){
+    _firebaseMessaging.getToken().then((value) async {
       print("*************** " + value);
+      await storeLocalFCMToken(value);
+    });
+    _firebaseMessaging.onTokenRefresh.listen((value) async {
+      print("######################### " + value);
+      await storeLocalFCMToken(value);
     });
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -132,6 +136,31 @@ class HomePage extends State<WebViewClass> {
   Future onSelectNotification(String payload) async {
     await flutterLocalNotificationsPlugin.cancelAll();
   }
+
+  Future<http.Response> sendFCMToken(String token) {
+    return http.post(
+      Uri.parse('https://mdeduchem.com/Dashboard/backend/store_token.php'),
+      body: <String, String>{
+        'token': token,
+      },
+    );
+  }
+
+  void storeLocalFCMToken(String token) async {
+    prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey('fcm_token')) {
+      sp_fcm_token = prefs.getString('fcm_token');
+      if (sp_fcm_token != token) {
+        prefs.setString('fcm_token', token);
+        await sendFCMToken(token);
+      }
+    }
+    else {
+      prefs.setString('fcm_token', token);
+      await sendFCMToken(token);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
