@@ -72,81 +72,64 @@ class HomePage extends State<WebViewClass> {
 
 
   final Completer<WebViewController> _controller = Completer<WebViewController>();
+  FirebaseMessaging _firebaseMessaging;
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
   @override
 
   void initState() {
     super.initState();
-    registerNotification();
 
+    var initializationSettingsAndroid = new AndroidInitializationSettings('@mipmap/ic_launcher');
+    var initializationSettingsIOS = new IOSInitializationSettings();
+    var initializationSettings = new InitializationSettings(
+        android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
+    flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onSelectNotification: onSelectNotification);
+    newNotificationStart();
     if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
   }
 
-  registerNotification() async {
+  void newNotificationStart() async {
     await Firebase.initializeApp();
-    messaging = FirebaseMessaging.instance;
-    messaging.getToken().then((value){
+    _firebaseMessaging = FirebaseMessaging.instance;
+    _firebaseMessaging.getToken().then((value){
       print("*************** " + value);
     });
-    var initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-    final InitializationSettings initializationSettings =
-    InitializationSettings(
-        android: initializationSettingsAndroid);
-
-    flutterLocalNotificationsPlugin.initialize(initializationSettings,
-        onSelectNotification: selectNotification);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       print("*************** message recieved");
-      _showNotification(message);
+      showNotification(message.notification.title, message.notification.body);
+      print("onMessage: $message");
     });
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       print('*************** Message clicked!');
+      print("onLaunch: $message");
+      Navigator.pushNamed(context, '/notify');
     });
+
   }
 
+  void showNotification(String title, String body) async {
+    await _demoNotification(title, body);
+  }
 
-  Future _showNotification(RemoteMessage message) async {
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'high_importance_channel', // id
-      'High Importance Notifications', // title
-      'This channel is used for important notifications.', // description
-      importance: Importance.max,
-    );
+  Future<void> _demoNotification(String title, String body) async {
+    var androidPlatformChannelSpecifics = AndroidNotificationDetails(
+        'channel_ID', 'channel name', 'channel description',
+        importance: Importance.max,
+        playSound: true,
+        showProgress: true,
+        priority: Priority.high,
+        ticker: 'test ticker');
 
+    var iOSChannelSpecifics = IOSNotificationDetails();
+    var platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics, iOS: iOSChannelSpecifics);
     await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
-    await FirebaseMessaging.instance
-        .setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    print(message.data);
-    Map<String, dynamic> data = message.data;
-    AndroidNotification android = message.notification?.android;
-    if (data != null) {
-      flutterLocalNotificationsPlugin.show(
-        0,
-        data['title'],
-        data['body'],
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            channel.id,
-            channel.name,
-            channel.description,
-            icon: android?.smallIcon
-          ),
-          iOS: IOSNotificationDetails(presentAlert: true, presentSound: true),
-        ),
-        payload: 'Default_Sound',
-      );
-    }
+        .show(0, title, body, platformChannelSpecifics, payload: 'test');
   }
 
-  Future selectNotification(String payload) async {
+  Future onSelectNotification(String payload) async {
     await flutterLocalNotificationsPlugin.cancelAll();
   }
 
