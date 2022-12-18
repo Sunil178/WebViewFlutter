@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:webview_flutter/platform_interface.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -30,10 +29,8 @@ class HomePage extends State<WebViewClass> {
   num position = 1 ;
   SharedPreferences prefs;
   String sp_fcm_token;
-  final Completer<WebViewController> _controller = Completer<WebViewController>();
   FirebaseMessaging _firebaseMessaging;
   FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-  final key = UniqueKey();
 
   doneLoading() {
     setState(() {
@@ -60,11 +57,11 @@ class HomePage extends State<WebViewClass> {
           title: Text('Are you sure?'),
           content: Text('Do you want to exit'),
           actions: <Widget>[
-            FlatButton(
+            TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: Text('No'),
             ),
-            FlatButton(
+            TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               child: Text('Yes'),
             ),
@@ -80,11 +77,10 @@ class HomePage extends State<WebViewClass> {
     super.initState();
 
     var initializationSettingsAndroid = new AndroidInitializationSettings('@mipmap/ic_launcher');
-    var initializationSettingsIOS = new IOSInitializationSettings();
+    var initializationSettingsIOS = new DarwinInitializationSettings();
     var initializationSettings = new InitializationSettings(android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
-    flutterLocalNotificationsPlugin.initialize(initializationSettings, onSelectNotification: onSelectNotification);
+    flutterLocalNotificationsPlugin.initialize(initializationSettings, onDidReceiveNotificationResponse: onDidReceiveNotificationResponse);
     startNotification();
-    if (Platform.isAndroid) WebView.platform = SurfaceAndroidWebView();
   }
 
   void startNotification() async {
@@ -119,21 +115,21 @@ class HomePage extends State<WebViewClass> {
 
   Future<void> _demoNotification(String title, String body) async {
     var androidPlatformChannelSpecifics = AndroidNotificationDetails(
-        'channel_ID', 'channel name', 'channel description',
+        'channel_ID', 'MD-Educhem',
+        channelDescription: 'channel description',
         importance: Importance.max,
         playSound: true,
         showProgress: true,
         priority: Priority.high,
         ticker: 'test ticker');
 
-    var iOSChannelSpecifics = IOSNotificationDetails();
     var platformChannelSpecifics = NotificationDetails(
-        android: androidPlatformChannelSpecifics, iOS: iOSChannelSpecifics);
+        android: androidPlatformChannelSpecifics);
     await flutterLocalNotificationsPlugin
         .show(0, title, body, platformChannelSpecifics, payload: 'test');
   }
 
-  Future onSelectNotification(String payload) async {
+  Future onDidReceiveNotificationResponse(NotificationResponse notificationResponse) async {
     await flutterLocalNotificationsPlugin.cancelAll();
   }
 
@@ -164,6 +160,31 @@ class HomePage extends State<WebViewClass> {
 
   @override
   Widget build(BuildContext context) {
+    controllerGlobal = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+          NavigationDelegate(
+              onProgress: (int progress){},
+              onPageFinished: (String url) { doneLoading(); },
+              onWebResourceError: (WebResourceError error) {
+                doneLoading();
+              },
+            onNavigationRequest: (NavigationRequest request) {
+              if (request.url.contains("occinfotech.in")) {
+              _launchURL(request.url);
+              return NavigationDecision.prevent;
+              }
+              if (!request.url.startsWith("http") || request.url.endsWith(".pdf")) {
+              _launchURL(request.url);
+              return NavigationDecision.prevent;
+              }
+              startLoading();
+              return NavigationDecision.navigate;
+              },
+          ),
+      )
+      ..loadRequest(Uri.parse("http://mdeduchem.com"));
+
     return WillPopScope(
       onWillPop: () => _exitApp(context),
       child: Scaffold(
@@ -171,30 +192,8 @@ class HomePage extends State<WebViewClass> {
           child: IndexedStack(
             index: position,
               children: <Widget>[
-                WebView(
-                  initialUrl: 'http://mdeduchem.com',
-                  javascriptMode: JavascriptMode.unrestricted,
-                  onWebViewCreated: (WebViewController webViewController) {
-                    controllerGlobal = webViewController;
-                    _controller.complete(webViewController);
-                  },
-                  navigationDelegate: (NavigationRequest request) {
-                    if (request.url.contains("occinfotech.in")) {
-                      _launchURL(request.url);
-                      return NavigationDecision.prevent;
-                    }
-                    if (!request.url.startsWith("http") || request.url.endsWith(".pdf")) {
-                      _launchURL(request.url);
-                      return NavigationDecision.prevent;
-                    }
-                    startLoading();
-                    return NavigationDecision.navigate;
-                  },
-                  key: key,
-                  onPageFinished: (String url) { doneLoading(); },
-                  onWebResourceError: (WebResourceError error) {
-                    doneLoading();
-                  },
+                WebViewWidget(
+                  controller: controllerGlobal,
                 ),
                 Container(
                   color: Colors.white,
